@@ -26,7 +26,7 @@ class EqualLR:
         self.name = name
 
     def compute_weight(self, module):
-        weight = getattr(module, self.name + '_orig')
+        weight = getattr(module, self.name + "_orig")
         fan_in = weight.data.size(1) * weight.data[0][0].numel()
 
         return weight * sqrt(2 / fan_in)
@@ -37,7 +37,7 @@ class EqualLR:
 
         weight = getattr(module, name)
         del module._parameters[name]
-        module.register_parameter(name + '_orig', nn.Parameter(weight.data))
+        module.register_parameter(name + "_orig", nn.Parameter(weight.data))
         module.register_forward_pre_hook(fn)
 
         return fn
@@ -47,7 +47,7 @@ class EqualLR:
         setattr(module, self.name, weight)
 
 
-def equal_lr(module, name='weight'):
+def equal_lr(module, name="weight"):
     EqualLR.apply(module, name)
 
     return module
@@ -70,12 +70,7 @@ class FusedUpsample(nn.Module):
 
     def forward(self, input):
         weight = F.pad(self.weight * self.multiplier, [1, 1, 1, 1])
-        weight = (
-            weight[:, :, 1:, 1:]
-            + weight[:, :, :-1, 1:]
-            + weight[:, :, 1:, :-1]
-            + weight[:, :, :-1, :-1]
-        ) / 4
+        weight = (weight[:, :, 1:, 1:] + weight[:, :, :-1, 1:] + weight[:, :, 1:, :-1] + weight[:, :, :-1, :-1]) / 4
 
         out = F.conv_transpose2d(input, weight, self.bias, stride=2, padding=self.pad)
 
@@ -99,12 +94,7 @@ class FusedDownsample(nn.Module):
 
     def forward(self, input):
         weight = F.pad(self.weight * self.multiplier, [1, 1, 1, 1])
-        weight = (
-            weight[:, :, 1:, 1:]
-            + weight[:, :, :-1, 1:]
-            + weight[:, :, 1:, :-1]
-            + weight[:, :, :-1, :-1]
-        ) / 4
+        weight = (weight[:, :, 1:, 1:] + weight[:, :, :-1, 1:] + weight[:, :, 1:, :-1] + weight[:, :, :-1, :-1]) / 4
 
         out = F.conv2d(input, weight, self.bias, stride=2, padding=self.pad)
 
@@ -124,9 +114,7 @@ class BlurFunctionBackward(Function):
     def forward(ctx, grad_output, kernel, kernel_flip):
         ctx.save_for_backward(kernel, kernel_flip)
 
-        grad_input = F.conv2d(
-            grad_output, kernel_flip, padding=1, groups=grad_output.shape[1]
-        )
+        grad_input = F.conv2d(grad_output, kernel_flip, padding=1, groups=grad_output.shape[1])
 
         return grad_input
 
@@ -134,9 +122,7 @@ class BlurFunctionBackward(Function):
     def backward(ctx, gradgrad_output):
         kernel, kernel_flip = ctx.saved_tensors
 
-        grad_input = F.conv2d(
-            gradgrad_output, kernel, padding=1, groups=gradgrad_output.shape[1]
-        )
+        grad_input = F.conv2d(gradgrad_output, kernel, padding=1, groups=gradgrad_output.shape[1])
 
         return grad_input, None, None
 
@@ -171,8 +157,8 @@ class Blur(nn.Module):
         weight = weight / weight.sum()
         weight_flip = torch.flip(weight, [2, 3])
 
-        self.register_buffer('weight', weight.repeat(channel, 1, 1, 1))
-        self.register_buffer('weight_flip', weight_flip.repeat(channel, 1, 1, 1))
+        self.register_buffer("weight", weight.repeat(channel, 1, 1, 1))
+        self.register_buffer("weight_flip", weight_flip.repeat(channel, 1, 1, 1))
 
     def forward(self, input):
         return blur(input, self.weight, self.weight_flip)
@@ -207,17 +193,7 @@ class EqualLinear(nn.Module):
 
 
 class ConvBlock(nn.Module):
-    def __init__(
-        self,
-        in_channel,
-        out_channel,
-        kernel_size,
-        padding,
-        kernel_size2=None,
-        padding2=None,
-        downsample=False,
-        fused=False,
-    ):
+    def __init__(self, in_channel, out_channel, kernel_size, padding, kernel_size2=None, padding2=None, downsample=False, fused=False):
         super().__init__()
 
         pad1 = padding
@@ -230,32 +206,17 @@ class ConvBlock(nn.Module):
         if kernel_size2 is not None:
             kernel2 = kernel_size2
 
-        self.conv1 = nn.Sequential(
-            EqualConv2d(in_channel, out_channel, kernel1, padding=pad1),
-            nn.LeakyReLU(0.2),
-        )
+        self.conv1 = nn.Sequential(EqualConv2d(in_channel, out_channel, kernel1, padding=pad1), nn.LeakyReLU(0.2))
 
         if downsample:
             if fused:
-                self.conv2 = nn.Sequential(
-                    Blur(out_channel),
-                    FusedDownsample(out_channel, out_channel, kernel2, padding=pad2),
-                    nn.LeakyReLU(0.2),
-                )
+                self.conv2 = nn.Sequential(Blur(out_channel), FusedDownsample(out_channel, out_channel, kernel2, padding=pad2), nn.LeakyReLU(0.2))
 
             else:
-                self.conv2 = nn.Sequential(
-                    Blur(out_channel),
-                    EqualConv2d(out_channel, out_channel, kernel2, padding=pad2),
-                    nn.AvgPool2d(2),
-                    nn.LeakyReLU(0.2),
-                )
+                self.conv2 = nn.Sequential(Blur(out_channel), EqualConv2d(out_channel, out_channel, kernel2, padding=pad2), nn.AvgPool2d(2), nn.LeakyReLU(0.2))
 
         else:
-            self.conv2 = nn.Sequential(
-                EqualConv2d(out_channel, out_channel, kernel2, padding=pad2),
-                nn.LeakyReLU(0.2),
-            )
+            self.conv2 = nn.Sequential(EqualConv2d(out_channel, out_channel, kernel2, padding=pad2), nn.LeakyReLU(0.2))
 
     def forward(self, input):
         out = self.conv1(input)
@@ -308,17 +269,7 @@ class ConstantInput(nn.Module):
 
 
 class StyledConvBlock(nn.Module):
-    def __init__(
-        self,
-        in_channel,
-        out_channel,
-        kernel_size=3,
-        padding=1,
-        style_dim=512,
-        initial=False,
-        upsample=False,
-        fused=False,
-    ):
+    def __init__(self, in_channel, out_channel, kernel_size=3, padding=1, style_dim=512, initial=False, upsample=False, fused=False):
         super().__init__()
 
         if initial:
@@ -327,26 +278,13 @@ class StyledConvBlock(nn.Module):
         else:
             if upsample:
                 if fused:
-                    self.conv1 = nn.Sequential(
-                        FusedUpsample(
-                            in_channel, out_channel, kernel_size, padding=padding
-                        ),
-                        Blur(out_channel),
-                    )
+                    self.conv1 = nn.Sequential(FusedUpsample(in_channel, out_channel, kernel_size, padding=padding), Blur(out_channel))
 
                 else:
-                    self.conv1 = nn.Sequential(
-                        nn.Upsample(scale_factor=2, mode='nearest'),
-                        EqualConv2d(
-                            in_channel, out_channel, kernel_size, padding=padding
-                        ),
-                        Blur(out_channel),
-                    )
+                    self.conv1 = nn.Sequential(nn.Upsample(scale_factor=2, mode="nearest"), EqualConv2d(in_channel, out_channel, kernel_size, padding=padding), Blur(out_channel))
 
             else:
-                self.conv1 = EqualConv2d(
-                    in_channel, out_channel, kernel_size, padding=padding
-                )
+                self.conv1 = EqualConv2d(in_channel, out_channel, kernel_size, padding=padding)
 
         self.noise1 = equal_lr(NoiseInjection(out_channel))
         self.adain1 = AdaptiveInstanceNorm(out_channel, style_dim)
@@ -432,7 +370,7 @@ class Generator(nn.Module):
 
             if i > 0 and step > 0:
                 out_prev = out
-                
+
             out = conv(out, style_step, noise[i])
 
             if i == step:
@@ -440,7 +378,7 @@ class Generator(nn.Module):
 
                 if i > 0 and 0 <= alpha < 1:
                     skip_rgb = self.to_rgb[i - 1](out_prev)
-                    skip_rgb = F.interpolate(skip_rgb, scale_factor=2, mode='nearest')
+                    skip_rgb = F.interpolate(skip_rgb, scale_factor=2, mode="nearest")
                     out = (1 - alpha) * skip_rgb + alpha * out
 
                 break
@@ -461,16 +399,7 @@ class StyledGenerator(nn.Module):
 
         self.style = nn.Sequential(*layers)
 
-    def forward(
-        self,
-        input,
-        noise=None,
-        step=0,
-        alpha=-1,
-        mean_style=None,
-        style_weight=0,
-        mixing_range=(-1, -1),
-    ):
+    def forward(self, input, noise=None, step=0, alpha=-1, mean_style=None, style_weight=0, mixing_range=(-1, -1)):
         styles = []
         if type(input) not in (list, tuple):
             input = [input]
@@ -529,17 +458,7 @@ class Discriminator(nn.Module):
                 return EqualConv2d(3, out_channel, 1)
 
         self.from_rgb = nn.ModuleList(
-            [
-                make_from_rgb(16),
-                make_from_rgb(32),
-                make_from_rgb(64),
-                make_from_rgb(128),
-                make_from_rgb(256),
-                make_from_rgb(512),
-                make_from_rgb(512),
-                make_from_rgb(512),
-                make_from_rgb(512),
-            ]
+            [make_from_rgb(16), make_from_rgb(32), make_from_rgb(64), make_from_rgb(128), make_from_rgb(256), make_from_rgb(512), make_from_rgb(512), make_from_rgb(512), make_from_rgb(512)]
         )
 
         # self.blur = Blur()
@@ -558,7 +477,7 @@ class Discriminator(nn.Module):
             if i == 0:
                 out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)
                 mean_std = out_std.mean()
-                mean_std = mean_std.expand(out.size(0), 1, 4, 4)
+                mean_std = mean_std.expand(out.size(0), 1, 128, 128)
                 out = torch.cat([out, mean_std], 1)
 
             out = self.progression[index](out)
@@ -569,9 +488,9 @@ class Discriminator(nn.Module):
                     skip_rgb = self.from_rgb[index + 1](skip_rgb)
 
                     out = (1 - alpha) * skip_rgb + alpha * out
-
+        print(out.shape)
         out = out.squeeze(2).squeeze(2)
-        # print(input.size(), out.size(), step)
+        print(input.shape, out.shape, step)
         out = self.linear(out)
 
         return out
