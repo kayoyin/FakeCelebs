@@ -215,7 +215,7 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt", default=None, type=str, help="load from previous checkpoints")
     parser.add_argument("--no_from_rgb_activate", action="store_true", help="use activate in from_rgb (original implementation)")
     parser.add_argument("--mixing", action="store_true", help="use mixing regularization")
-    parser.add_argument("--loss", type=str, default="wgan-gp", choices=["wgan-gp", "r1"], help="class of gan loss")
+    parser.add_argument("--loss", type=str, default="wgan-gp", choices=["wgan-gp"], help="class of gan loss")
 
     args = parser.parse_args()
 
