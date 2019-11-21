@@ -1,4 +1,5 @@
 # Style-Based GAN in PyTorch
+![example output](https://miro.medium.com/max/3780/1*dhXsTa5zOVk79AowpMHKbg.png)
 
 Repository that gathers code to train StyleGAN.
 
